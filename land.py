@@ -5,8 +5,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import math as m
 
-height = 128
-width = 256
+height = 512
+width = 1024
 inclination = 1
 
 """
@@ -26,6 +26,7 @@ class NoiseWrapper():
     def __init__(self, **kwargs):
         self.noise = OpenSimplex(**kwargs)
         self.fast_noise = fns.Noise()
+        # self.fast_noise.frequency = 0.05
 
     def polar_noise(self, theta, phi, rho):
         """Generates noise at the given polar coordinates
@@ -44,34 +45,24 @@ class NoiseWrapper():
         z = rho * m.cos(theta)
         return self.noise.noise3d(x, y, z)
 
-    def polar_fast_noise(self, h, w, octave):
+    def polar_fast_noise(self, h, w, o):
         numCoords = h * w
         coords = fns.emptyCoords(numCoords)
-        coords = coords.ravel().reshape((-1, 3), order='F')
         for y in range(h):
             for x in range(w):
-                theta = y / (width/2) * m.pi
+                theta = (y + .5) / (width/2) * m.pi
                 phi = x / height * m.pi
-                v = 2**octave
-                xv = v * m.sin(theta) * m.cos(phi)
-                yv = v * m.sin(theta) * m.sin(phi)
-                zv = v * m.cos(theta)
+                xv = o * m.sin(theta) * m.cos(phi)
+                yv = o * m.sin(theta) * m.sin(phi)
+                zv = o * m.cos(theta)
                 index = y*w+x
-                coords[index][0] = xv
-                coords[index][1] = yv
-                coords[index][2] = zv
-        coords = coords.ravel().reshape((3, -1), order='F')
+                coords[0][index] = xv
+                coords[1][index] = yv
+                coords[2][index] = zv
 
         result = self.fast_noise.genFromCoords(coords)
 
         return result.reshape((h, w))
-
-
-
-
-
-
-
 
     def noise(self, nx, ny):
         # Rescale from -1.0:+1.0 to 0.0:1.0
@@ -88,6 +79,17 @@ class NoiseWrapper():
                     v = 2**e
                     map[y][x] += self.polar_noise(theta, phi, v) * 1/v
         return normalize_map(map)
+
+    def get_normalized_world_fast(self, h, w, octaves, offset:int=6):
+        map = np.zeros((h, w))
+        for e in range(offset, octaves + offset):
+            v = 2**e
+            print(v)
+            map += self.polar_fast_noise(h, w, v) / v
+            self.fast_noise = fns.Noise()
+
+        return normalize_map(map)
+
 
 
 def hillshade(array, azimuth, angle_altitude):
@@ -124,12 +126,15 @@ def main():
     g = 1
     b = 2
 
-    heightmap = n.get_normalized_world(height, width, 10)
-    base_temp_map = n.get_normalized_world(height, width, 10)
+    heightmap = n.get_normalized_world_fast(height, width, 6)
+    # roughness_map = n.get_normalized_world_fast(height, width, 3)
+    heightmap **= 1.5
 
-    srm = normalize_map(hillshade(heightmap, 315, 45))
-    plt.imshow(srm)
-    plt.show()
+    # base_temp_map = n.get_normalized_world(height, width, 10)
+
+    srm = normalize_map(hillshade(heightmap, 315, 45)) + .2
+    # plt.imshow(srm)
+    # plt.show()
     srm_image = np.reshape(srm, (height, width, 1))
 
 
@@ -159,11 +164,12 @@ def main():
 def fastnoisetest():
     n = NoiseWrapper()
 
-    image = n.polar_fast_noise(height, width, 1)
+    image = n.get_normalized_world_fast(height, width, 10)
     plt.imshow(image)
     plt.show()
 
 
 
 if __name__=="__main__":
+    # fastnoisetest()
     main()
