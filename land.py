@@ -6,10 +6,10 @@ import matplotlib.pyplot as plt
 import math as m
 from scipy.ndimage.filters import gaussian_filter
 
-# height = 512
-# width = 1024
-height = 128
-width = 256
+height = 512
+width = 1024
+# height = 128
+# width = 256
 sea_level = 0.65
 inclination = 1
 
@@ -122,19 +122,6 @@ def hillshade(array:np.ndarray, azimuth:int=315, angle_altitude:int=45):
 
 def base_temp(h, w):
     """
-    float base_temp(float latitude){
-	if(fabs(latitude) < .2){
-		return 27 + 273.15;
-	}
-	float val = fabs(latitude) * -67.5 + 40.5 + 273.15; // that kelvin tho
-	return val;
-}
-
-    Args:
-        h:
-        w:
-
-    Returns:
 
     """
     map = np.zeros((h, w))
@@ -156,20 +143,22 @@ def base_temp(h, w):
 def main():
     n = NoiseWrapper()
     n.fast_noise.seed = 1337
+    n.fast_noise.perturb.perturbType = fns.PerturbType.GradientFractal
+    n.fast_noise.perturb.frequency = .001
+    n.fast_noise.perturb.octaves = 2
 
     # image = n.polar_fast_noise(height, width, 1)
     # plt.imshow(image)
     # plt.show()
 
     image = np.zeros((height, width, 3))
-    r = 0
-    g = 1
-    b = 2
 
     heightmap = n.get_normalized_world_fast(height, width, 6)
-    # roughness_map = n.get_normalized_world_fast(height, width, 3)
+    rn = NoiseWrapper()
+    rn.fast_noise.seed = 133377
+    roughness_map = rn.get_normalized_world_fast(height, width, 3, offset=5)
     heightmap = (heightmap - sea_level).clip(0) / sea_level
-    heightmap **= 1.5
+    heightmap **= roughness_map + 1 #1.5
 
 
     height_m = heightmap * 9000.
@@ -185,6 +174,9 @@ def main():
     m.fast_noise.seed = 133337
 
     moisture_map = m.get_normalized_world_fast(height, width, 3) * 300. # cm/year
+
+
+
 
 
 
@@ -212,21 +204,24 @@ def main():
 
 
 
-    srm = normalize_map(hillshade(heightmap))
-    # plt.imshow(srm)
-    # plt.show()
+    srm = normalize_map(hillshade(heightmap)) +.2
+    plt.imshow(srm)
+    plt.show()
     srm_image = np.reshape(srm, (height, width, 1))
 
 
 
+    r = 0
+    g = 1
+    b = 2
     for y in range(height):
         for x in range(width):
             rv = 0
             gv = 0
             bv = 0
             if temp_map_c[y][x] < -10:
-                rv = .5
-                gv = .5
+                rv = .75
+                gv = .75
                 bv = 1.
             elif heightmap[y][x] > 0.:
                 gv = heightmap[y][x] / 2 + .5
@@ -239,7 +234,7 @@ def main():
             image[y][x][b] = bv
 
 
-    image = image * srm_image
+    image = (image * srm_image).clip(0, 1)
     plt.imshow(image)
     plt.show()
 
@@ -252,9 +247,23 @@ def fastnoisetest():
     plt.imshow(image)
     plt.show()
 
+def perturb_test():
+
+    n = NoiseWrapper()
+    n.fast_noise.seed = 1337
+    n.fast_noise.perturb.perturbType = fns.PerturbType.GradientFractal
+    n.fast_noise.perturb.frequency = .001
+    n.fast_noise.perturb.octaves = 2
+
+
+    image = (n.get_normalized_world_fast(height, width, 6) - .5).clip(0,1)
+    # image = n.polar_fast_noise(height, width, 1)
+    plt.imshow(image, cmap='terrain')
+    plt.show()
 
 
 if __name__=="__main__":
     # fastnoisetest()
     # base_temp(height, width)
+    # perturb_test()
     main()
