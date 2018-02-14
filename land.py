@@ -4,13 +4,14 @@ from opensimplex import OpenSimplex
 import numpy as np
 import matplotlib.pyplot as plt
 import math as m
+from enum import Enum
 from scipy.ndimage.filters import gaussian_filter
 
 height = 512
 width = 1024
 # height = 128
 # width = 256
-sea_level = 0.65
+sea_level = 0.6
 inclination = 1
 
 """
@@ -139,6 +140,89 @@ def base_temp(h, w):
             map[y][x] = temp
     return map
 
+def base_moisture(h, w):
+    map = np.zeros((h, w))
+
+    for y in range(h):
+        latitude_percent = (1.0 - (y + .5) / (h / 2))
+        latitude_rads = latitude_percent * np.pi / 2
+        lr = latitude_rads
+
+        c = m.cos(latitude_rads)
+        moist = 2 * c * m.cos(6.6 * lr) + 3.5 * c + .25
+
+        for x in range(w):
+            map[y][x] = moist
+    return map
+
+class Biome(Enum):
+    OCEAN = 0
+    DESERT = 1
+    SAVANNAH = 2
+    FOREST = 3
+    RAINFOREST = 4
+    GRASSLAND = 5
+    TAIGA = 6
+    TUNDRA = 7
+    ICE = 8
+
+color = {
+    Biome.OCEAN: (0, 0,255),
+    Biome.DESERT: (240,230,140),
+    Biome.SAVANNAH: (255,225,0),
+    Biome.FOREST: (0,128,0),
+    Biome.RAINFOREST: (0,100, 0),
+    Biome.GRASSLAND: (173,255,47),
+    Biome.TAIGA: (46,139,87),
+    Biome.TUNDRA: (102,205,170),
+    Biome.ICE: (240,240,255),
+
+}
+
+
+
+
+def whittaker(t, moisture):
+    if t > 18:
+        if moisture < 50:
+            return Biome.DESERT
+        elif moisture < 150:
+            return Biome.SAVANNAH
+        elif moisture < 250:
+            return Biome.FOREST
+        else:
+            return Biome.RAINFOREST
+    elif t > 3:
+        if moisture < 25:
+            return Biome.DESERT
+        elif moisture < 150:
+            return Biome.GRASSLAND
+        elif moisture < 225:
+            return Biome.FOREST
+        else:
+            return Biome.RAINFOREST
+    elif t > -5:
+        if moisture < 25:
+            return Biome.DESERT
+        elif moisture < 50:
+            return Biome.GRASSLAND
+        else:
+            return Biome.TAIGA
+    elif t > -15:
+        return Biome.TUNDRA
+    else:
+        return Biome.ICE
+
+
+def gen_world(height, width):
+    n = NoiseWrapper()
+    n.fast_noise.seed = 1337
+    n.fast_noise.perturb.perturbType = fns.PerturbType.GradientFractal
+    n.fast_noise.perturb.frequency = .001
+    n.fast_noise.perturb.octaves = 2
+
+
+
 
 def main():
     n = NoiseWrapper()
@@ -151,7 +235,6 @@ def main():
     # plt.imshow(image)
     # plt.show()
 
-    image = np.zeros((height, width, 3))
 
     heightmap = n.get_normalized_world_fast(height, width, 6)
     rn = NoiseWrapper()
@@ -172,15 +255,10 @@ def main():
 
     m = NoiseWrapper()
     m.fast_noise.seed = 133337
+    moisture_map = base_moisture(height, width)
+    moisture_map *= m.get_normalized_world_fast(height, width, 1)  * 2  # kg/m^2/Day
 
-    moisture_map = m.get_normalized_world_fast(height, width, 3) * 300. # cm/year
-
-
-
-
-
-
-
+    moisture_map = moisture_map * 365 / 10.0  # change to cm/year
 
     # changed = True
     # min = 1.0
@@ -197,44 +275,32 @@ def main():
     #                 moisture_map[y][x] = max([north, south, east, west]) - 1
     #     moisture_map += 1
 
-    # plt.imshow(moisture_map)
-    # plt.show()
+    plt.imshow(moisture_map)
+    plt.show()
 
 
 
 
 
     srm = normalize_map(hillshade(heightmap)) +.2
-    plt.imshow(srm)
-    plt.show()
+    # plt.imshow(srm)
+    # plt.show()
     srm_image = np.reshape(srm, (height, width, 1))
 
 
 
-    r = 0
-    g = 1
-    b = 2
     for y in range(height):
         for x in range(width):
-            rv = 0
-            gv = 0
-            bv = 0
-            if temp_map_c[y][x] < -10:
-                rv = .75
-                gv = .75
-                bv = 1.
-            elif heightmap[y][x] > 0.:
-                gv = heightmap[y][x] / 2 + .5
+            val = whittaker(temp_map_c[y][x], moisture_map[y][x])
+            if heightmap[y][x] > 0 or val == Biome.ICE:
+                val = color[val]
             else:
-                bv = 1.0
+                val = color[Biome.OCEAN]
+            image[y][x] = val
 
+    image = np.zeros((height, width, 3))
 
-            image[y][x][r] = rv
-            image[y][x][g] = gv
-            image[y][x][b] = bv
-
-
-    image = (image * srm_image).clip(0, 1)
+    image = ((image * srm_image)/255.).clip(0, 1)
     plt.imshow(image)
     plt.show()
 
@@ -261,9 +327,18 @@ def perturb_test():
     plt.imshow(image, cmap='terrain')
     plt.show()
 
+def test_moist():
+    m = NoiseWrapper()
+    m.fast_noise.seed = 133337
+    moisture_map = base_moisture(height, width)
+    moisture_map += m.get_normalized_world_fast(height, width, 3)  # cm/year
+    plt.imshow(moisture_map)
+    plt.show()
+
 
 if __name__=="__main__":
     # fastnoisetest()
     # base_temp(height, width)
     # perturb_test()
+    # test_moist()
     main()
