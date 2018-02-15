@@ -246,36 +246,40 @@ def gen_heightmap(h, w, s):
 
     moisture_map = moisture_map * 365 / 10.0  # change to cm/year
 
-    srm = normalize_map(hillshade(heightmap)) +.2
-
-    srm_image = np.reshape(srm, (h, w, 1))
 
     biomes = [[Biome.OCEAN for x in range(w)] for y in range(h)]
 
     for y in range(h):
         for x in range(w):
             val = whittaker(temp_map_c[y][x], moisture_map[y][x])
-            biomes[y][x] = val
+            if height_m[y][x] > 0.0 or val == Biome.ICE:
+                biomes[y][x] = val
 
-    return height_m, temp_map_c, moisture_map, biomes, srm_image,
+    return height_m, temp_map_c, moisture_map, biomes
 
-
-def main():
-    height_m, temp_map_c, moisture_map, biomes, srm_image = gen_heightmap(height, width, 1337)
-
+def gen_image(height_m, biomes):
     image = np.zeros((height, width, 3))
+
+    srm = normalize_map(hillshade(height_m)) +.2
+    srm_image = np.reshape(srm, srm.shape + (1,))
 
     for y in range(height):
         for x in range(width):
             val = biomes[y][x]
-            if height_m[y][x] > 0.0 or val == Biome.ICE:
-                val = color[val]
-            else:
-                val = color[Biome.OCEAN]
+            val = color[val]
             image[y][x] = val
 
     image = ((image * srm_image)/255.).clip(0, 1)
-    plt.imshow(image)
+    return image
+
+
+def main():
+    height_m, temp_map_c, moisture_map, biomes = gen_heightmap(height, width, 1337)
+
+    plt.scatter(temp_map_c, moisture_map)
+    plt.show()
+
+    plt.imshow(gen_image(height_m, biomes))
     plt.show()
 
     imageio.imwrite("map.png", image)
