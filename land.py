@@ -7,10 +7,10 @@ import math as m
 from enum import Enum
 from scipy.ndimage.filters import gaussian_filter
 
-height = 512
-width = 1024
-# height = 128
-# width = 256
+# height = 512
+# width = 1024
+height = 128
+width = 256
 sea_level = 0.6
 inclination = 1
 
@@ -214,91 +214,65 @@ def whittaker(t, moisture):
         return Biome.ICE
 
 
-def gen_world(height, width):
+def gen_heightmap(h, w, s):
     n = NoiseWrapper()
-    n.fast_noise.seed = 1337
+    n.fast_noise.seed = s
     n.fast_noise.perturb.perturbType = fns.PerturbType.GradientFractal
     n.fast_noise.perturb.frequency = .001
     n.fast_noise.perturb.octaves = 2
 
+    heightmap = n.get_normalized_world_fast(h, w, 6)
 
-
-
-def main():
-    n = NoiseWrapper()
-    n.fast_noise.seed = 1337
-    n.fast_noise.perturb.perturbType = fns.PerturbType.GradientFractal
-    n.fast_noise.perturb.frequency = .001
-    n.fast_noise.perturb.octaves = 2
-
-    # image = n.polar_fast_noise(height, width, 1)
-    # plt.imshow(image)
-    # plt.show()
-
-
-    heightmap = n.get_normalized_world_fast(height, width, 6)
     rn = NoiseWrapper()
-    rn.fast_noise.seed = 133377
-    roughness_map = rn.get_normalized_world_fast(height, width, 3, offset=5)
-    heightmap = (heightmap - sea_level).clip(0) / sea_level
-    heightmap **= roughness_map + 1 #1.5
+    rn.fast_noise.seed = s + 1 # best practices, amirite?
+    roughness_map = rn.get_normalized_world_fast(h, w, 3, offset=5)
 
+    heightmap = (heightmap - sea_level).clip(0) / sea_level
+    heightmap **= roughness_map + 1.5 #1.5
 
     height_m = heightmap * 9000.
     m_adibatic_change = height_m * -5e-3
-    base_temp_map = base_temp(height, width)
+    base_temp_map = base_temp(h, w)
     t = NoiseWrapper()
-    t.fast_noise.seed = 13337
-    temp_map = (t.get_normalized_world_fast(height, width, 3) - .5) * 10 + base_temp_map + m_adibatic_change
+    t.fast_noise.seed = s + 2
+    temp_map = (t.get_normalized_world_fast(h, w, 3) - .5) * 10 + base_temp_map + m_adibatic_change
 
     temp_map_c = temp_map - 273.15
 
-    m = NoiseWrapper()
-    m.fast_noise.seed = 133337
-    moisture_map = base_moisture(height, width)
-    moisture_map *= m.get_normalized_world_fast(height, width, 1)  * 2  # kg/m^2/Day
+    l = NoiseWrapper()
+    l.fast_noise.seed = s+3
+    moisture_map = base_moisture(h, w)
+    moisture_map *= l.get_normalized_world_fast(h, w, 1)  * 2  # kg/m^2/Day
 
     moisture_map = moisture_map * 365 / 10.0  # change to cm/year
 
-    # changed = True
-    # min = 1.0
-    # while changed:
-    #     changed = False
-    #     for y in range(height):
-    #         for x in range(width):
-    #             if moisture_map[y][x] < min:
-    #                 changed = True
-    #                 north = moisture_map[y-1][x]
-    #                 south = moisture_map[(y+1)%height][x]
-    #                 east = moisture_map[y][(x+1)%width]
-    #                 west = moisture_map[y][x-1]
-    #                 moisture_map[y][x] = max([north, south, east, west]) - 1
-    #     moisture_map += 1
-
-    plt.imshow(moisture_map)
-    plt.show()
-
-
-
-
-
     srm = normalize_map(hillshade(heightmap)) +.2
-    # plt.imshow(srm)
-    # plt.show()
-    srm_image = np.reshape(srm, (height, width, 1))
+
+    srm_image = np.reshape(srm, (h, w, 1))
+
+    biomes = [[Biome.OCEAN for x in range(w)] for y in range(h)]
+
+    for y in range(h):
+        for x in range(w):
+            val = whittaker(temp_map_c[y][x], moisture_map[y][x])
+            biomes[y][x] = val
+
+    return height_m, temp_map_c, moisture_map, biomes, srm_image,
 
 
+def main():
+    height_m, temp_map_c, moisture_map, biomes, srm_image = gen_heightmap(height, width, 1337)
+
+    image = np.zeros((height, width, 3))
 
     for y in range(height):
         for x in range(width):
-            val = whittaker(temp_map_c[y][x], moisture_map[y][x])
-            if heightmap[y][x] > 0 or val == Biome.ICE:
+            val = biomes[y][x]
+            if height_m[y][x] > 0.0 or val == Biome.ICE:
                 val = color[val]
             else:
                 val = color[Biome.OCEAN]
             image[y][x] = val
-
-    image = np.zeros((height, width, 3))
 
     image = ((image * srm_image)/255.).clip(0, 1)
     plt.imshow(image)
