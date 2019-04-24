@@ -1,3 +1,5 @@
+import argparse
+
 import imageio
 import pyfastnoisesimd as fns
 from opensimplex import OpenSimplex
@@ -9,8 +11,8 @@ from scipy.ndimage.filters import gaussian_filter
 
 # height = 512
 # width = 1024
-height = 128
-width = 256
+# height = 128
+# width = 256
 sea_level = 0.6
 inclination = 1
 
@@ -55,8 +57,8 @@ class NoiseWrapper():
         coords = fns.emptyCoords(numCoords)
         for y in range(h):
             for x in range(w):
-                theta = (y + .5) / (width/2) * m.pi
-                phi = x / height * m.pi
+                theta = (y + .5) / (w/2) * m.pi
+                phi = x / h * m.pi
                 xv = o * m.sin(theta) * m.cos(phi)
                 yv = o * m.sin(theta) * m.sin(phi)
                 zv = o * m.cos(theta)
@@ -79,8 +81,8 @@ class NoiseWrapper():
         for y in range(h):
             for x in range(w):
                 for e in range(octaves):
-                    theta = y / (width/2) * m.pi
-                    phi = x / height * m.pi
+                    theta = y / (w/2) * m.pi
+                    phi = x / w * m.pi
                     v = 2**e
                     map[y][x] += self.polar_noise(theta, phi, v) * 1/v
         return normalize_map(map)
@@ -228,7 +230,7 @@ def gen_heightmap(h, w, s):
     roughness_map = rn.get_normalized_world_fast(h, w, 3, offset=5)
 
     heightmap = (heightmap - sea_level).clip(0) / sea_level
-    heightmap **= roughness_map + 1.5 #1.5
+    heightmap **= roughness_map * 2 + 1.5 #1.5
 
     height_m = heightmap * 9000.
     m_adibatic_change = height_m * -5e-3
@@ -258,13 +260,13 @@ def gen_heightmap(h, w, s):
     return height_m, temp_map_c, moisture_map, biomes
 
 def gen_image(height_m, biomes):
-    image = np.zeros((height, width, 3))
+    image = np.zeros(height_m.shape + (3,))
 
-    srm = normalize_map(hillshade(height_m)) +.2
+    srm = normalize_map(hillshade(height_m)) + .2
     srm_image = np.reshape(srm, srm.shape + (1,))
 
-    for y in range(height):
-        for x in range(width):
+    for y in range(image.shape[0]):
+        for x in range(image.shape[1]):
             val = biomes[y][x]
             val = color[val]
             image[y][x] = val
@@ -274,20 +276,29 @@ def gen_image(height_m, biomes):
 
 
 def main():
-    height_m, temp_map_c, moisture_map, biomes = gen_heightmap(height, width, 1337)
+    parser = argparse.ArgumentParser(description="Build a new, random world")
+    parser.add_argument('height', type=int, help="The y component")
+    parser.add_argument('width', type=int, help="The x component")
+    parser.add_argument('seed', type=int, help="The seed for the noise")
+    args = parser.parse_args()
+    height = args.height
+    width = args.width
 
-    plt.scatter(temp_map_c, moisture_map)
-    plt.show()
+
+
+    height_m, temp_map_c, moisture_map, biomes = gen_heightmap(height, width, args.seed)
+    image = gen_image(height_m, biomes)
+
+    imageio.imwrite("map.png", image)
 
     plt.imshow(gen_image(height_m, biomes))
     plt.show()
 
-    imageio.imwrite("map.png", image)
 
 def fastnoisetest():
     n = NoiseWrapper()
 
-    image = n.get_normalized_world_fast(height, width, 10)
+    image = n.get_normalized_world_fast(128, 256, 10)
     plt.imshow(image)
     plt.show()
 
@@ -300,7 +311,7 @@ def perturb_test():
     n.fast_noise.perturb.octaves = 2
 
 
-    image = (n.get_normalized_world_fast(height, width, 6) - .5).clip(0,1)
+    image = (n.get_normalized_world_fast(128, 256, 6) - .5).clip(0,1)
     # image = n.polar_fast_noise(height, width, 1)
     plt.imshow(image, cmap='terrain')
     plt.show()
@@ -308,8 +319,8 @@ def perturb_test():
 def test_moist():
     m = NoiseWrapper()
     m.fast_noise.seed = 133337
-    moisture_map = base_moisture(height, width)
-    moisture_map += m.get_normalized_world_fast(height, width, 3)  # cm/year
+    moisture_map = base_moisture(128, 256)
+    moisture_map += m.get_normalized_world_fast(128, 256, 3)  # cm/year
     plt.imshow(moisture_map)
     plt.show()
 
