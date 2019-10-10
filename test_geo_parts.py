@@ -72,6 +72,12 @@ class TestStuff(unittest.TestCase):
         plt.imshow(aggregated.raster)
         plt.show()
 
+    def test_load_agg(self):
+        data = gr.from_file(os.path.expanduser("~/Downloads/datasets/elevation/one_deg.tif"))
+        plt.imshow(data.raster)
+        plt.show()
+
+
 
 
 if __name__ == '__main__':

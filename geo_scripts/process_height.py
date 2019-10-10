@@ -67,6 +67,9 @@ def br_wrapper(raster, x_deg, y_deg):
     x_block = int(abs(x_deg / xsize))
     y_block = int(abs(y_deg / ysize))
     block_size = (x_block, y_block)
+    # clip the raster so there's no overlap
+    # if raster.shape[0] % y_block != 0 or raster.shape[1] % x_block != 0:
+    #     array =
     output = raster.block_reduce(block_size)
     return output
 
