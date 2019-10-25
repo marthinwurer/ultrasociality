@@ -1,4 +1,6 @@
 import unittest
+
+from dithering import fs_dithering
 from load_simple_world import *
 from pprint import pprint
 

@@ -54,14 +54,19 @@ class TestStuff(unittest.TestCase):
 
     def test_load_chelsea(self):
         DATA = "~/Downloads/datasets/chelsea/CHELSA_prec_01_V1.2_land.tif"  # from http://chelsa-climate.org/downloads/
-        DATA = os.path.expanduser(DATA)
-        x_ranges = list(gen_ranges(-180, 180, 1))
-        y_ranges = list(gen_ranges(-90, 90, 1))
-        data = gr.from_file(DATA)
-        unmasked = data.raster.filled(0.0)
+        data = gr.from_file(os.path.expanduser("~/Downloads/datasets/chelsea/CHELSA_prec_01_V1.2_land.tif"))
         # aggregated = aggregate_grid(data, x_ranges, y_ranges)
-        # plt.imshow(aggregated)
-        # plt.show()
+        print(data.raster.shape)
+        data.raster.fill
+        one_deg = br_wrapper(data, 1, 1)
+        """ 
+        What's happening is that the mask is being removed. 
+        I need to aggregate the mask to the same 1 degree grid, then decide how to use it.
+        I can dither it, or I can use a hard cutoff.
+        I might end up just using my own aggregation function for this because of how the y min and maxes work here.
+        """
+        plt.imshow(one_deg.raster)
+        plt.show()
 
     def test_br(self):
         DATA = "~/Downloads/datasets/elevation/viewfinder_dem3/15-J.tif"  # from http://www.viewfinderpanoramas.org/dem3.html
@@ -73,9 +78,23 @@ class TestStuff(unittest.TestCase):
         plt.show()
 
     def test_load_agg(self):
-        data = gr.from_file(os.path.expanduser("~/Downloads/datasets/elevation/one_deg.tif"))
+        data = gr.from_file(os.path.expanduser("~/Downloads/datasets/elevation/one_deg_height.tif"))
         plt.imshow(data.raster)
         plt.show()
+
+    def test_load_agg_stddev(self):
+        data = gr.from_file(os.path.expanduser("~/Downloads/datasets/elevation/one_deg_stddev.tif.tif"))
+        plt.imshow(data.raster)
+        plt.show()
+
+    def test_raster_diff(self):
+        height = gr.from_file(os.path.expanduser("~/Downloads/datasets/elevation/one_deg_height.tif")).raster
+        stddev = gr.from_file(os.path.expanduser("~/Downloads/datasets/elevation/one_deg_stddev.tif.tif")).raster
+        out = height - stddev
+        print(np.ma.min(out), np.ma.max(out), np.ma.average(out), np.ma.sum(out))
+        plt.imshow(out)
+        plt.show()
+
 
 
 
