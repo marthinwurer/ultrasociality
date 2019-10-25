@@ -43,3 +43,40 @@ def dither_mask(mask):
     dithered = fs_dithering(cop)
     out = dithered == 255
     return out
+
+
+def mask_pix_func(val):
+    if val > .5:
+        return 1.0
+    else:
+        return 0.0
+
+
+
+def dither_mask_error(im):
+    """
+    dither an aggregated mask and get the error, then return the dithered mask and its error values
+    Args:
+        im: a float np array
+    """
+    pixel = im.copy()
+    error = np.zeros(pixel.shape)
+    xl = im.shape[1]
+    yl = im.shape[0]
+    for y in range(yl):
+        for x in range(xl):
+            oldpixel = pixel[y][x]
+            newpixel = mask_pix_func(oldpixel)
+            pixel[y][x] = newpixel
+            quant_error = oldpixel - newpixel
+            error[y][x] = quant_error
+            if x < xl - 1:
+                pixel[y][x + 1] = pixel[y][x + 1] + quant_error * 7 / 16
+            if x != 0 and y < yl - 1:
+                pixel[y + 1][x - 1] = pixel[y + 1][x - 1] + quant_error * 3 / 16
+            if x < xl - 1 and y < yl - 1:
+                pixel[y + 1][x + 1] = pixel[y + 1][x + 1] + quant_error * 1 / 16
+            if y < yl - 1:
+                pixel[y + 1][x] = pixel[y + 1][x] + quant_error * 5 / 16
+    return pixel, error
+

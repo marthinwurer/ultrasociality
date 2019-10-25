@@ -96,7 +96,7 @@ def aggregate_slices(slices, how=np.ma.mean):
 
 
 def filter_masked(data):
-    if np.mean(data.mask) > 0.60:
+    if np.mean(data.mask) > 0.65:
         return np.ma.masked
     else:
         return np.ma.mean(data)
@@ -162,7 +162,6 @@ def rasterize_shapefile(shapes, raster, band=1, layer=0, all_touched=False):
 
 def get_global_raster(scale):
     shape = np.asarray([180, 360]) * scale
-    print(shape)
     base = np.ma.ones(shape)
     desired_x_size = 360 / base.shape[1]
     desired_y_size = 180 / base.shape[0]
