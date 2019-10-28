@@ -7,12 +7,13 @@ import os
 import numpy as np
 
 from geo_scripts.process_height import gen_ranges, get_slices, aggregate_slices, filter_masked, get_global_raster, \
-    rasterize_shapefile
+    rasterize_shapefile, aggregate_grid
 
 
 def main():
     precip_data = gr.from_file(os.path.expanduser("~/Downloads/datasets/chelsea/CHELSA_bio10_12.tif"))
 
+    print("ocean map")
     # get the chelsea data mask to be used as the main ocean mask
     x_ranges = list(gen_ranges(-180, 180, 1))
     y_ranges = list(gen_ranges(90, -90, 1))
@@ -53,26 +54,43 @@ def main():
     np.save("./data/underwater_mask.npy", underwater)
 
     # generate the desert map
+    print("desert map")
     desert = precip_ag < 250
     np.save("./data/desert.npy", desert.data)
 
     # generate river map
+    print("river map")
     river_rasterized = rasterize_shapefile(df_river, raster_1)
     np.save("./data/river.npy", river_rasterized)
 
     # generate elevation map
+    print("elevation map")
     height = gr.from_file(os.path.expanduser("~/Downloads/datasets/elevation/one_deg_height.tif")).raster
     np.save("./data/height.npy", height.data)
     stddev = gr.from_file(os.path.expanduser("~/Downloads/datasets/elevation/one_deg_stddev.tif")).raster
     np.save("./data/stddev.npy", stddev.data)
 
     # generate steppes map
+    print("Steppes map")
     ecos_shape = geopandas.read_file(
         os.path.expanduser("~/Downloads/datasets/official_teow/official/wwf_terr_ecos.shp"))
     steppes = ecos_shape[ecos_shape["BIOME"] == 8]
     raster_1 = get_global_raster(1)
     steppes_rasterized = rasterize_shapefile(steppes, raster_1)
     np.save("./data/steppes.npy", steppes_rasterized)
+
+    # Efective temperatures?
+    print("effective temperature")
+    effective_temperature = np.load("./data/effective_temperature_large.npy")
+    effective_mask = np.load("./data/effective_temperature_large_mask.npy")
+    effective_temperature = np.ma.array(effective_temperature, mask=effective_mask)
+    chelsea_geot = (-180.00013888885002, 0.0083333333, 0.0, 83.99986041515001, 0.0, -0.0083333333)
+    raster = gr.GeoRaster(effective_temperature, chelsea_geot)
+    et_ag = aggregate_grid(raster, x_ranges, y_ranges)
+    np.save("./data/effective_temperature.npy", et_ag.data)
+    # terrestrial plant threshold
+    tpt = et_ag > 12.75
+    np.save("./data/terrestrial_plant_threshold.npy", tpt.data)
 
 
 
