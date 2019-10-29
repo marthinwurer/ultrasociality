@@ -92,6 +92,11 @@ def main():
     tpt = et_ag > 12.75
     np.save("./data/terrestrial_plant_threshold.npy", tpt.data)
 
+    # agriculture thresholds
+    print("agriculture")
+    agriculture = tpt & (desert == False) | (river_rasterized & tpt)
+    np.save("./data/agriculture.npy", agriculture.data)
+
 
 
 

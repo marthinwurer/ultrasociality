@@ -25,12 +25,16 @@ Grid size:
 Look at computing the fertility of the land to see the max population that can be supported/carrying capacity.
 NPP? (net primary production)
 
+Agricultural Suitability?
+ - temperature, radiation and moisture regimes
+
 http://www.montana.edu/hansenlab/documents/bio494/slides/Lec4.pdf
 Chapin et al. 2011 Figs 6.2
 Huston and Wolverton 2009 Fig 4
 Light received is also important - 
 
 Effective temperature takes into account humidity, wind, cloud cover, and air temperature to produce the way a person (or plant) actually feels.
+
 
 
 
