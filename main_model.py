@@ -7,11 +7,13 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 n_ultra = 10  # number of ultrasocial traits
-n_mil = 10  # number of military tech traits
+n_mil = 5  # number of military tech traits
 power_coefficient = 1  # translates ultrasociality traits into the polity’s power
-miltech_diffusion = 0.25  # probability of MilTech diffusing to a nearby cell
+# miltech_diffusion = 0.25  # probability of MilTech diffusing to a nearby cell
+miltech_diffusion = 0.5  # probability of MilTech diffusing to a nearby cell
 e_min = 1/20  # baseline probability of ethnocide
 e_max = 1  # maximum probability of ethnocide
+e_height_coefficient = 4  # coefficient translating elevation into ethnocide prevention
 disintegration_base = 0.05  # disintegration probability
 disintegration_size = 0.05  # disintegration size coefficient
 disintegration_ultra = 2  # ultrasocial trait stability bonus
@@ -97,11 +99,14 @@ def main():
     height = np.load("./data/height.npy")
     stddev = np.load("./data/stddev.npy")
 
+    # mask out antarctica
+    water[150:] = True
+
     # generate polities
     cells = list(land_coords(water))
     polities = new_polities(cells, t_start)
 
-    mil_seed_mask = steppes & (agriculture == False)
+    mil_seed_mask = steppes# & (agriculture == False)
     military[mil_seed_mask] = True
 
     # turchin assumes that only agricultural tiles do operations.
@@ -111,9 +116,10 @@ def main():
         nu = np.sum(ultrasocial, axis=-1)
         nm = np.sum(military, axis=-1)
 
-        polity_map = update_polity_values(polities, nu, nm)
+        polity_map, size_map = update_polity_values(polities, nu, nm)
 
         np.save("./outputs/polity_map_%s.npy" % (year,), polity_map)
+        np.save("./outputs/size_map_%s.npy" % (year,), size_map)
         np.save("./outputs/ultra_%s.npy" % (year,), nu)
         np.save("./outputs/military_%s.npy" % (year,), nm)
 
@@ -123,31 +129,36 @@ def main():
         # diffusion
         diffusion(military, cells)
         # ethnocide
-        ethnocide(invasions, ultrasocial, nm, height)
+        num_ethnocide = ethnocide(invasions, ultrasocial, nm, height)
         # evolution
         evolution(ultrasocial)
         ultrasocial[agriculture == False] = False  # reset ultrasocial traits in non-agricultural locations
         # polity disintegration
-        next_polities = disintegration(polities, invasions, year)
+        next_polities, collapses = disintegration(polities, invasions, year)
+
+        print("Year: %s eth/inv: %s / %s, collapses: %s" % (year, num_ethnocide, len(invasions), collapses))
 
         polities = next_polities
 
 
 def update_polity_values(polities, ultra, mil):
     # build polity identity map
-    polity_map = np.full(world_shape, fill_value=-1, dtype=np.int16)
+    polity_map = np.full(ultra.shape, fill_value=-1, dtype=np.int16)
+    size_map = np.full(ultra.shape, fill_value=-1, dtype=np.int16)
     for identity, polity in enumerate(polities):
+        size = len(polity.cells)
         total_u = 0
         total_m = 0
         for cell in polity.cells:
             polity_map[cell] = identity
+            size_map[cell] = size
             total_u += ultra[cell]
             total_m += mil[cell]
 
-        polity.average_u = total_u / len(polity.cells)
-        polity.average_m = total_m / len(polity.cells)
+        polity.average_u = total_u / size
+        polity.average_m = total_m / size
 
-    return polity_map
+    return polity_map, size_map
 
 
 
@@ -185,9 +196,36 @@ def warfare(polities, polity_map, ultra, mil, cells, elevation):
         used.add(other_cell)
         invasions.append((cell, other_cell, own_polity, other_polity))
 
-
-
     return invasions
+
+def invade_cells(used, a_cell, d_cell, polity_map, polities, elevation, roll):
+    own_polity = polity_map[a_cell]
+    other_polity = polity_map[d_cell]
+    # check if invasion happens
+    if (own_polity == other_polity or  # if they're the same polity, no attack is made
+            other_polity == -1 or  # -1 is an invalid polity
+            d_cell in used  # can't attack a cell that's been already used
+            # or random.random() > attack_prob
+    ):  # attack chance
+        return None
+
+    a_polity = polities[own_polity]
+    d_polity = polities[other_polity]
+
+    p_att = 1 + power_coefficient * a_polity.average_u * len(a_polity.cells)
+    p_def = 1 + power_coefficient * d_polity.average_u * len(d_polity.cells) + \
+            height_coefficient * (elevation[d_cell] / 1000)  # divide by 1k because it's supposed to be in Km
+
+    p_success = (p_att - p_def) / (p_att + p_def)
+    print(p_success)
+
+    # check if invasion succeeds
+    if roll > p_success:
+        return None
+
+    used.add(d_cell)
+    return (a_cell, d_cell, own_polity, other_polity)
+
 
 
 def diffusion(miltech, cells):
@@ -209,12 +247,16 @@ def diffusion(miltech, cells):
 
 
 def ethnocide(invasions, ultrasocial, mil, elevation):
+    count = 0
     for a_cell, d_cell, _, _ in invasions:
         p_ethnocide = e_min + (e_max - e_min) * (mil[a_cell] / n_mil) -\
-                      height_coefficient * (elevation[d_cell] / 1000)
+                      e_height_coefficient * (elevation[d_cell] / 1000)
 
         if p_ethnocide > 0 and random.random() < p_ethnocide:
+            count += 1
             ultrasocial[d_cell] = ultrasocial[a_cell]
+
+    return count
 
 
 def evolution(ultra):
@@ -239,6 +281,8 @@ def disintegration(polities, invasions, year):
         a_polity.cells.append(d_cell)
         d_polity.cells.remove(d_cell)
 
+    collapses = 0
+
     # do disintegraton calcs
     for polity in polities:
         size = len(polity.cells)
@@ -248,15 +292,16 @@ def disintegration(polities, invasions, year):
             # if there's only one community, it will not fall apart
             next_polities.append(polity)
         else:
-            prob = disintegration_base + disintegration_size * size +\
+            prob = disintegration_base + disintegration_size * size -\
                         disintegration_ultra * polity.average_u
             if prob < random.random():
                 next_polities.append(polity)
             else:
+                collapses += 1
                 new = new_polities(polity.cells, year)
                 next_polities.extend(new)
 
-    return next_polities
+    return next_polities, collapses
 
 
 
