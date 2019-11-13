@@ -13,7 +13,7 @@ power_coefficient = 1  # translates ultrasociality traits into the polity’s po
 miltech_diffusion = 0.5  # probability of MilTech diffusing to a nearby cell
 e_min = 1/20  # baseline probability of ethnocide
 e_max = 1  # maximum probability of ethnocide
-e_height_coefficient = 4  # coefficient translating elevation into ethnocide prevention
+e_height_coefficient = 1  # coefficient translating elevation into ethnocide prevention
 disintegration_base = 0.05  # disintegration probability
 disintegration_size = 0.05  # disintegration size coefficient
 disintegration_ultra = 2  # ultrasocial trait stability bonus
@@ -138,7 +138,7 @@ def main():
 
         print("Year: %s eth/inv: %s / %s, collapses: %s" % (year, num_ethnocide, len(invasions), collapses))
 
-        polities = next_polities
+        polities = shuffled(next_polities)
 
 
 def update_polity_values(polities, ultra, mil):
