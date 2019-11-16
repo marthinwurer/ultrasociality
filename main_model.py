@@ -1,3 +1,4 @@
+import functools
 import random
 
 import numpy as np
@@ -5,6 +6,13 @@ import matplotlib.pyplot as plt
 
 # constants
 from tqdm import tqdm
+
+miltech_diffuse_flag = True
+# miltech_invade_flag = True  # if true, transmit miltech on invasion
+miltech_invade_flag = False  # if true, transmit miltech on invasion
+seed_miltech_randomly = False
+seed_miltech_incrementally = True
+
 
 n_ultra = 10  # number of ultrasocial traits
 n_mil = 5  # number of military tech traits
@@ -19,7 +27,8 @@ disintegration_size = 0.05  # disintegration size coefficient
 disintegration_ultra = 2  # ultrasocial trait stability bonus
 mutation_gain = 0.0001  # probability that a cell will gain an ultrasocial trait
 mutation_loss = 0.002  # probability that a cell will lose an ultrasocial trait
-distance_sea = 1  # base distance of sea-based attack
+# distance_sea = 1  # base distance of sea-based attack
+distance_sea = 5  # base distance of sea-based attack
 d_sea_gain = 0.25  # increment of sea distance each time step
 dt = 2 # number of years per timestep
 t_start = -1500  # Start year of the simulation
@@ -86,11 +95,32 @@ def random_neighbor(cell):
     return other_cell
 
 
+def littoral_neighbors(littoral, cell, distance):
+    y_max = littoral.shape[0]
+    x_max = littoral.shape[1]
+
+    # cells are y, x
+    center_y = cell[0]
+    center_x = cell[1]
+
+    if not littoral[center_y, center_x]:
+        return [(0, 0)]
+
+    cells = []
+    for y in range(center_y - distance, center_y + distance + 1):
+        for x in range(center_x - distance, center_x + distance + 1):
+            c_y, c_x = y % y_max, x % x_max
+            if littoral[c_y, c_x]:
+                cells.append((c_y, c_x))
+
+    return cells
+
+
 def main():
     gen_neighbors()
     ultrasocial = np.zeros((y_dim, x_dim, n_ultra), dtype=np.bool)
     military = np.zeros((y_dim, x_dim, n_mil), dtype=np.bool)
-    year = t_start
+    sea_distance = distance_sea
 
     # load datasets
     water = np.load("./data/underwater_mask.npy")
@@ -98,20 +128,64 @@ def main():
     steppes = np.load("./data/steppes.npy")
     height = np.load("./data/height.npy")
     stddev = np.load("./data/stddev.npy")
+    littoral = np.load("./data/littoral.npy")
+
+
+    # add steppes as desert
+    agriculture[steppes] = False
+
 
     # mask out antarctica
     water[150:] = True
 
+    # mask out non-eurasia steppes
+    steppes[90:] = False
+    steppes[:,:180] = False
+
     # generate polities
-    cells = list(land_coords(water))
+    cells = list(land_coords(water))  # cells are y, x
     polities = new_polities(cells, t_start)
 
+    # generate littoral cells
+    l_cells = littoral & (water == False)
+
+    @functools.lru_cache(maxsize=2**12)
+    def littoral_wrapper(cell, distance):
+        return littoral_neighbors(l_cells, cell, distance)
+
     mil_seed_mask = steppes# & (agriculture == False)
-    military[mil_seed_mask] = True
+    if seed_miltech_incrementally:
+        inc = 2# n_mil // 3
+        mil_assign = np.zeros((n_mil,), dtype=np.bool)
+        mil_assign[:inc] = True
+    else:
+        mil_assign = True
+
+    if not seed_miltech_randomly:
+        military[mil_seed_mask] = mil_assign
+    else:
+        initial_cell = shuffled(cells)[0]
+        military[initial_cell[0], initial_cell[1], :] = mil_assign
 
     # turchin assumes that only agricultural tiles do operations.
     # I will instead assume that all tiles do operations, but that only agricultural tiles have ultrasocial traits.
     for year in tqdm(range(t_start, t_end + 1, dt)):
+        # sea_distance += d_sea_gain
+        # do era changes
+        if year == -500:
+            sea_distance = 10
+            if seed_miltech_incrementally:
+                inc = 4  # (n_mil) // 2
+                mil_assign[:inc] = True
+                military[mil_seed_mask] = mil_assign
+
+
+        if year == 500:
+            sea_distance = 15
+            if seed_miltech_incrementally:
+                military[mil_seed_mask] = True  # always want this to be the max
+            pass
+
         # calculate community values
         nu = np.sum(ultrasocial, axis=-1)
         nm = np.sum(military, axis=-1)
@@ -124,10 +198,13 @@ def main():
         np.save("./outputs/military_%s.npy" % (year,), nm)
 
         # warfare
-        invasions = warfare(polities, polity_map, nu, nm, cells, height)
+        invasions = warfare(polities, polity_map, littoral_wrapper, int(sea_distance), cells, height)
 
         # diffusion
-        diffusion(military, cells)
+        if miltech_diffuse_flag:
+            diffusion(military, cells)
+        if miltech_invade_flag:
+            mil_invade(invasions, military)
         # ethnocide
         num_ethnocide = ethnocide(invasions, ultrasocial, nm, height)
         # evolution
@@ -162,7 +239,7 @@ def update_polity_values(polities, ultra, mil):
 
 
 
-def warfare(polities, polity_map, ultra, mil, cells, elevation):
+def warfare(polities, polity_map, littoral, distance, cells, elevation):
     used = set()
     invasions = []
     for cell in shuffled(cells):
@@ -172,6 +249,15 @@ def warfare(polities, polity_map, ultra, mil, cells, elevation):
         own_polity = polity_map[cell]
         other_cell = random_neighbor(cell)
         other_polity = polity_map[other_cell]
+
+        if other_polity == -1:  # check for littoral cells
+            ln = shuffled(littoral(cell, distance))
+            if ln:
+                other_cell = ln[0]
+                other_polity = polity_map[other_cell]
+            # If this doesn't catch it things are probably very wrong, but we'll still
+            # do the rest of the checks.
+
         # check if invasion happens
         if (own_polity == other_polity or  # if they're the same polity, no attack is made
                 other_polity == -1 or  # -1 is an invalid polity
@@ -244,6 +330,12 @@ def diffusion(miltech, cells):
             other_cell = random_neighbor(cell)
             if random.random() < miltech_diffusion:
                 miltech[other_cell][locus] = 1
+
+
+def mil_invade(invasions, military):
+    """Transmit miltech on invasion"""
+    for a_cell, d_cell, _, _ in invasions:
+        military[d_cell] = military[a_cell]
 
 
 def ethnocide(invasions, ultrasocial, mil, elevation):

@@ -5,6 +5,7 @@ import georasters as gr
 import os
 
 import numpy as np
+import scipy.signal
 
 from geo_scripts.process_height import gen_ranges, get_slices, aggregate_slices, filter_masked, get_global_raster, \
     rasterize_shapefile, aggregate_grid
@@ -52,6 +53,18 @@ def main():
 
     # save the underwater mask
     np.save("./data/underwater_mask.npy", underwater)
+    np.save("./data/ocean_mask.npy", chelsea_mask)
+
+    # littoral cells
+    conv = np.asarray([
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+    ])
+
+    lit = scipy.signal.convolve2d(chelsea_mask, conv, mode="same", boundary="wrap")
+    lit = lit >= 1
+    np.save("./data/littoral.npy", lit)
 
     # generate the desert map
     print("desert map")
